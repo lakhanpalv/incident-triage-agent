@@ -4,6 +4,8 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from pydantic import BaseModel, Field, field_validator, ValidationError
+from typing import Literal
 from lib.llm_client import call_llm
 
 app = func.FunctionApp()
@@ -16,51 +18,50 @@ def load_system_prompt() -> str:
     prompt_path = Path(__file__).parent / "prompts" / "incident_triage_system_v1.txt"
     with open(prompt_path, 'r') as f:
         return f.read()
+
+# Pydantic model for incident output validation
+class IncidentOutput(BaseModel):
+    incident_id: str = Field(..., min_length=1, description="Unique incident identifier")
+    incident_summary: str = Field(..., min_length=1, description="Brief summary of the incident")
+    description: str = Field(..., min_length=1, description="Detailed incident description")
+    primary_signals: list[str] = Field(..., description="List of primary signals detected")
+    risks_or_unknowns: list[str] = Field(default_factory=list, description="List of risks or unknowns")
+    triage_outcome: Literal["action_required", "needs_clarification", "monitor_only", 
+                            "false_positive", "duplicate_or_known"]
+    severity: Literal["Sev0", "Sev1", "Sev2", "Sev3", "Sev4"]
+    urgency: Literal["Low", "Medium", "High", "Critical"]
+    timestamp: str = Field(..., description="ISO 8601 timestamp")
+    
+    @field_validator('timestamp')
+    @classmethod
+    def validate_timestamp_format(cls, v: str) -> str:
+        """Validate timestamp is in ISO 8601 format"""
+        try:
+            datetime.fromisoformat(v)
+        except ValueError:
+            raise ValueError("Invalid timestamp format - must be ISO 8601")
+        return v
+    
+    @field_validator('primary_signals')
+    @classmethod
+    def validate_primary_signals_not_empty(cls, v: list[str], info) -> list[str]:
+        """Ensure primary_signals is not empty when triage_outcome is action_required"""
+        triage_outcome = info.data.get('triage_outcome')
+        if triage_outcome == 'action_required' and not v:
+            raise ValueError("primary_signals must not be empty when triage_outcome is action_required")
+        return v
     
 # # --- Post-Run Eval ---
 def validate_incident_output(output) -> dict:
-    errors = []
-
-    if not isinstance(output, dict):
-        errors.append("Output is not a dict")
-
-    if "incident_id" not in output or not isinstance(output["incident_id"], str):
-        errors.append("Missing or invalid incident_id")
-
-    if "incident_summary" not in output or not isinstance(output["incident_summary"], str):
-        errors.append("Missing or invalid incident_summary")
-    elif not output["incident_summary"].strip():
-        errors.append("incident_summary is empty")
-
-    if "description" not in output or not isinstance(output["description"], str):
-        errors.append("Missing or invalid description")
-
-    if "triage_outcome" not in output or output["triage_outcome"] not in ["action_required", "needs_clarification", "monitor_only", "false_positive", "duplicate_or_known"]:
-        errors.append("Missing or invalid triage_outcome")
-
-    if "primary_signals" not in output or not isinstance(output["primary_signals"], list):
-        errors.append("Missing or invalid primary_signals")
-    elif output.get("triage_outcome") == "action_required" and not output["primary_signals"]:
-        errors.append("primary_signals must not be empty when triage_outcome is action_required")
-
-    if "severity" not in output or output["severity"] not in ["Sev0", "Sev1", "Sev2", "Sev3", "Sev4"]:
-        errors.append("Missing or invalid severity")
-
-    if "urgency" not in output or output["urgency"] not in ["Low", "Medium", "High", "Critical"]:
-        errors.append("Missing or invalid urgency")
-
-    if "timestamp" not in output:
-        errors.append("Missing timestamp")
-    else:
-        try:
-            datetime.fromisoformat(output["timestamp"])
-        except ValueError:
-            errors.append("Invalid timestamp format")
-
-    return {
-        "hard_fail": len(errors) > 0,
-        "errors": errors
-    }
+    """Validate incident output using Pydantic model"""
+    try:
+        IncidentOutput(**output)
+        return {"hard_fail": False, "errors": []}
+    except ValidationError as e:
+        errors = [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
+        return {"hard_fail": True, "errors": errors}
+    except Exception as e:
+        return {"hard_fail": True, "errors": [f"Validation error: {str(e)}"]}
 
 def run_agent_core(input_text: str, run_id: str | None = None) -> dict:
     if run_id is None:
