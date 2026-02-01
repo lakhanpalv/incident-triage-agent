@@ -1,0 +1,5 @@
+Automated alerts indicate database errors in the EU region.
+However, dashboard metrics show normal performance.
+No customers have reported issues so far.
+
+Previous incidents looked similar but were false alarms.

@@ -1,0 +1,3 @@
+Seeing some odd behavior in reports.
+Not sure if this is expected or not.
+Might be related to recent changes but hard to tell.
