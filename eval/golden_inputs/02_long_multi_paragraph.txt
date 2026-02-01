@@ -1,0 +1,8 @@
+Since early this morning, several customers have complained about slow checkout performance.
+Initial investigation suggests increased latency on the payment gateway.
+
+Rollback was attempted at 9:45 AM but response times did not improve.
+No alerts were triggered in monitoring dashboards.
+Engineering suspects a downstream dependency but root cause is unclear.
+
+Customer support is escalating due to increased ticket volume.

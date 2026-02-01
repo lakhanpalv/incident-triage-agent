@@ -1,0 +1,4 @@
+Users are reporting login failures across the mobile app since 10:15 AM.
+Error message shows "authentication service unavailable."
+Multiple regions affected.
+Issue started after the morning deployment.
