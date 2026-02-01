@@ -1,14 +1,22 @@
 import azure.functions as func
-import datetime
+from datetime import datetime, timezone
 import json
 import logging
 import uuid
+from pathlib import Path
+from lib.llm_client import call_llm
 
 app = func.FunctionApp()
 
 # Constants
 MIMETYPE_JSON = "application/json"
 
+def load_system_prompt() -> str:
+    """Load the system prompt from a file."""
+    prompt_path = Path(__file__).parent / "prompts" / "incident_triage_system_v1.txt"
+    with open(prompt_path, 'r') as f:
+        return f.read()
+    
 # # --- Post-Run Eval ---
 def validate_incident_output(output) -> dict:
     errors = []
@@ -45,7 +53,7 @@ def validate_incident_output(output) -> dict:
         errors.append("Missing timestamp")
     else:
         try:
-            datetime.datetime.fromisoformat(output["timestamp"])
+            datetime.fromisoformat(output["timestamp"])
         except ValueError:
             errors.append("Invalid timestamp format")
 
@@ -75,22 +83,19 @@ def run_agent_core(input_text: str, run_id: str | None = None) -> dict:
     if len(plan) > 10:
         raise RuntimeError("Plan too long")
 
+    system_prompt = load_system_prompt()
+    message = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": input_text}
+    ]
     # --- Execution (Incident Triage Stub) ---
-    output = {
-        "incident_id": run_id,
-        "incident_summary": "Users experiencing login failures across mobile app",
-        "description": input_text,
-        "primary_signals": [
-            "Login failures reported",
-            "Authentication service unavailable",
-            "Multiple regions affected"
-        ],
-        "risks_or_unknowns": [],
-        "triage_outcome": "action_required",
-        "severity": "Sev3",
-        "urgency": "High",
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }
+    raw_output = call_llm(message, temperature=0, max_tokens=1500)
+    try:
+        logging.info(f"[{run_id}] Stage=llm_call length={len(raw_output)}")
+        output = json.loads(raw_output)
+        output["timestamp"] = datetime.now(timezone.utc).isoformat()
+    except json.JSONDecodeError:
+        raise ValueError("LLM output is not valid JSON")
     return output
 
 @app.route(route="agent_runner", auth_level=func.AuthLevel.FUNCTION)

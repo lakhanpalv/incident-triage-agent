@@ -4,3 +4,5 @@
 
 azure-functions
 opentelemetry-api
+openai
+python-dotenv

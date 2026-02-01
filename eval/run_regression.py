@@ -2,6 +2,10 @@ import json
 import os
 import sys
 from unittest.mock import MagicMock
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Mock azure.functions before importing function_app
 sys.modules['azure.functions'] = MagicMock()
@@ -27,6 +31,7 @@ def run_regression_test(input_file: str) -> bool:
     
     # Run the agent core function
     output_result = run_agent_core(input_text)
+    print(f"Agent Output: {output_result}")
     eval_result = validate_incident_output(output_result)
 
     if eval_result["hard_fail"]:
